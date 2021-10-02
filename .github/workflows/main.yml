@@ -1,0 +1,427 @@
+name: Manual And Scheduled Build 64bit
+
+on:
+#  schedule:
+#  - cron: "0 */2 * * *"    # Every 2 hours
+
+  workflow_dispatch:
+    inputs:
+      revision:
+        description: 'Revision'
+        required: false
+        default: ''
+        
+  repository_dispatch:
+    inputs:
+      revision:
+        description: 'Revision'
+        required: false
+        default: ''
+
+concurrency: 
+  group: Snapshot Build
+  cancel-in-progress: true
+
+jobs:
+#  static_analysis:
+#      name: Static Analysis
+#      runs-on: macos-10.15
+#      strategy:
+#        fail-fast: false
+#        matrix:
+#          ui: [ GTK3, SDL2, SDL ]
+#      
+#      steps:
+#        - name: Install Dependencies
+#          shell: bash
+#          run: |
+#            pip3 install scan-build
+#            brew install autoconf automake pkg-config dos2unix
+#            brew install sdl2 sdl2_image
+#            brew install gtk+3 librsvg adwaita-icon-theme
+#            brew install ffmpeg glew xa lame libvorbis flac jpeg-turbo
+#
+#        - name: Checkout Source
+#          uses: actions/checkout@v2
+        
+#        - name: Checkout Pages
+#          uses: actions/checkout@v2
+#          with:
+#            ref: 'gh-pages'
+#            path: 'gh-pages'
+
+#        - name: Analyse
+#          shell: bash
+#          run: |
+#            ./vice/build/macOS/github-actions-build.sh analyse "${{ matrix.ui }}" "$(echo "${{ github.ref }}" | sed 's,.*/,,')"
+
+#        - name: Publish Results
+#          shell: bash
+#          run: |
+#            cd gh-pages
+            
+#            git add .
+#            git commit -m "Updated $UI static analysis output"
+
+#            # Try to avoid the race condition between the the two analysis runs
+#            for i in $(seq 1 3)
+#            do
+#              git pull --rebase
+#              git push && break
+#              sleep 15
+#            done
+  
+
+  cleanup_previous_builds: # Delete unfinished draft prereleases, and prereleases older than 30 days (but keep at least 10)
+    name: Cleanup Previous Builds
+    runs-on: ubuntu-latest
+    steps:
+
+#      - name: Check if we need to compile
+#        run: |
+#          revision=$(svn info --show-item revision https://svn.code.sf.net/p/vice-emu/code/trunk/vice@${{ github.event.inputs.revision }})
+#          echo Latest revision: $revision
+#          curl -qs "https://github.com/$GITHUB_REPOSITORY/tags"|grep "class.*releases/tag/"|grep "$revision" && exit 1 || exit 0
+
+      - uses: actions/github-script@v3
+        with:
+          github-token: ${{secrets.GITHUB_TOKEN}}
+          script: |
+            // Get a list of all releases, sorted newest first
+            let releases =
+              (await github.paginate(
+                github.repos.listReleases,
+                {
+                  owner: context.repo.owner,
+                  repo: context.repo.repo
+                }))
+                .sort((a,b) => b.created_at.localeCompare(a.created_at));
+            
+            let releaseCount = 0;
+            let releasesToDelete = [];
+            // Initiate deletion of draft prereleases
+            for (const release of releases)
+            {
+              // Only cleanup prereleases
+              if (!release.prerelease)
+                continue;
+              // Failed builds leave drafts - delete them
+              if (release.draft)
+              {
+                console.log("Will delete draft prerelease: " + release.tag_name);
+                releasesToDelete.push(release.id);
+                continue;
+              }
+              
+              // Keep at least 20, no matter how old
+              if (++releaseCount <= 20)
+                continue;
+              
+              // We have more than 10 releases - delete those more than 30 days old
+              let daysAgo = Math.floor((new Date() - Date.parse(release.created_at)) / 1000 / 60 / 60 / 24);
+              if (daysAgo <= 30)
+                continue;
+              
+              console.log("Will delete old prerelease: " + release.tag_name);
+              releasesToDelete.push(release.id);
+            }
+            if (releasesToDelete.length)
+            {
+              let promises = [];
+              for (const id of releasesToDelete)
+              {
+                promises.push(
+                  github.repos.deleteRelease(
+                    {
+                      owner: context.repo.owner,
+                      repo: context.repo.repo,
+                      release_id: id
+                    }));
+              }
+              
+              console.log("Waiting for deletions to complete");
+              await Promise.all(promises);
+            }
+            console.log("Done.");
+  create_release:
+    name: Create Draft Release
+    needs: cleanup_previous_builds
+    runs-on: ubuntu-latest
+    outputs:
+      upload_url: ${{ steps.create_release.outputs.upload_url }}
+      release_id: ${{ steps.create_release.outputs.id }}
+    steps:
+
+      - name: Get revision
+        run: |
+          echo "revision=$(svn info --show-item revision https://svn.code.sf.net/p/vice-emu/code/trunk/vice@${{ github.event.inputs.revision }})" >> $GITHUB_ENV
+      - name: Create Release
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.WF }}
+        with:
+          tag_name: r${{ env.revision }}
+          release_name: r${{ env.revision }}
+          draft: true
+          prerelease: true
+
+  build_doc:
+    name: Test Headless, Build Documentation
+    needs: create_release
+    runs-on: ubuntu-20.04
+   
+    steps:
+
+      - name: SVN Checkout Source
+        shell: bash
+        run: svn checkout https://svn.code.sf.net/p/vice-emu/code/trunk/vice@${{ github.event.inputs.revision }} vice
+
+      - name: Install Dependencies
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install autoconf automake build-essential byacc flex xa65 dos2unix
+          sudo apt-get install texinfo texlive-fonts-recommended
+          
+      - name: Build
+        id: build
+        shell: bash
+        run: |
+          cd vice
+          ./autogen.sh || echo autogen failed.
+          ./configure --enable-headlessui --enable-html-docs --without-pulse --without-alsa --without-png || echo configure failed.
+          make -j 4 || ( for a in $(curl -qs https://api.github.com/repos/$GITHUB_REPOSITORY/actions/workflows/main.yml/runs|grep -B 1 "Manual"|grep id|tr -d " ,"|cut -d ":" -f 2);do curl -qs -X DELETE -H "Accept: application/vnd.github.v3+json" -H "Authorization: token ${{ secrets.WF }} " "https://api.github.com/repos/$GITHUB_REPOSITORY/actions/runs/$a";done )
+      - name: Upload
+        uses: actions/upload-artifact@v2
+        with:
+          name: vice-pdf
+          path: vice/doc/vice.pdf
+          retention-days: 1
+  
+  build:
+    name: Build
+    needs: [create_release, build_doc]
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        arch:
+        - { msystem: MINGW64, arch: x86_64 }
+        - { msystem: MINGW32, arch: i686 }
+        ui: [ GTK3, SDL2, SDL ]
+        
+    steps:
+    
+      - name: Checkout Source
+        uses: actions/checkout@v2
+
+      - name: SVN Checkout Source
+        shell: bash
+        run: | 
+          svn checkout --trust-server-cert --non-interactive https://svn.code.sf.net/p/vice-emu/code/trunk/vice vice
+          rm -rf ./vice/build/msys2/github-actions-build.sh
+          cp my_build.sh ./vice/build/msys2/github-actions-build.sh
+      - name: Download Documentation
+        uses: actions/download-artifact@v2
+        with:
+          name: vice-pdf
+          path: vice/doc/
+
+      - name: Install GTK3 Dependencies if Applicable
+        if: ${{ matrix.ui == 'GTK3' }}
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: ${{ matrix.arch.msystem }}
+          update: true
+          install: >-
+            git
+            base-devel
+            mingw-w64-${{ matrix.arch.arch }}-toolchain
+            zip
+            p7zip
+            subversion
+            yasm
+            texinfo
+            texinfo-tex
+            ncurses
+            mingw-w64-${{ matrix.arch.arch }}-pkg-config
+            mingw-w64-${{ matrix.arch.arch }}-ntldd
+            mingw-w64-${{ matrix.arch.arch }}-glew
+            mingw-w64-${{ matrix.arch.arch }}-giflib
+            mingw-w64-${{ matrix.arch.arch }}-lame
+            mingw-w64-${{ matrix.arch.arch }}-libvorbis
+            mingw-w64-${{ matrix.arch.arch }}-flac
+            mingw-w64-${{ matrix.arch.arch }}-icoutils
+            mingw-w64-${{ matrix.arch.arch }}-ffmpeg
+            mingw-w64-${{ matrix.arch.arch }}-gtk3
+            mingw-w64-${{ matrix.arch.arch }}-x264
+            mingw-w64-${{ matrix.arch.arch }}-x265
+            mingw-w64-${{ matrix.arch.arch }}-perl
+            mingw-w64-${{ matrix.arch.arch }}-perl-doc
+            mingw-w64-${{ matrix.arch.arch }}-mpg123
+            mingw-w64-${{ matrix.arch.arch }}-ntldd
+            mingw-w64-${{ matrix.arch.arch }}-ntldd-git
+      
+      - name: Install SDL2 Dependencies if Applicable
+        if: ${{ matrix.ui == 'SDL2' }}
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: ${{ matrix.arch.msystem }}
+          update: true
+          install: >-
+            git
+            base-devel
+            mingw-w64-${{ matrix.arch.arch }}-toolchain
+            zip
+            p7zip
+            subversion
+            yasm
+            texinfo
+            texinfo-tex
+            ncurses
+            mingw-w64-${{ matrix.arch.arch }}-pkg-config
+            mingw-w64-${{ matrix.arch.arch }}-ntldd
+            mingw-w64-${{ matrix.arch.arch }}-glew
+            mingw-w64-${{ matrix.arch.arch }}-giflib
+            mingw-w64-${{ matrix.arch.arch }}-lame
+            mingw-w64-${{ matrix.arch.arch }}-libvorbis
+            mingw-w64-${{ matrix.arch.arch }}-flac
+            mingw-w64-${{ matrix.arch.arch }}-icoutils
+            mingw-w64-${{ matrix.arch.arch }}-ffmpeg
+            mingw-w64-${{ matrix.arch.arch }}-x264
+            mingw-w64-${{ matrix.arch.arch }}-x265
+            mingw-w64-${{ matrix.arch.arch }}-perl
+            mingw-w64-${{ matrix.arch.arch }}-perl-doc
+            mingw-w64-${{ matrix.arch.arch }}-mpg123
+            mingw-w64-${{ matrix.arch.arch }}-SDL2
+            mingw-w64-${{ matrix.arch.arch }}-SDL2_image
+            mingw-w64-${{ matrix.arch.arch }}-ntldd
+            mingw-w64-${{ matrix.arch.arch }}-ntldd-git
+      
+      - name: Install SDL Dependencies if Applicable
+        if: ${{ matrix.ui == 'SDL' }}
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: ${{ matrix.arch.msystem }}
+          update: true
+          install: >-
+            git
+            base-devel
+            mingw-w64-${{ matrix.arch.arch }}-toolchain
+            zip
+            p7zip
+            subversion
+            yasm
+            texinfo
+            texinfo-tex
+            ncurses
+            mingw-w64-${{ matrix.arch.arch }}-pkg-config
+            mingw-w64-${{ matrix.arch.arch }}-ntldd
+            mingw-w64-${{ matrix.arch.arch }}-glew
+            mingw-w64-${{ matrix.arch.arch }}-giflib
+            mingw-w64-${{ matrix.arch.arch }}-lame
+            mingw-w64-${{ matrix.arch.arch }}-libvorbis
+            mingw-w64-${{ matrix.arch.arch }}-flac
+            mingw-w64-${{ matrix.arch.arch }}-icoutils
+            mingw-w64-${{ matrix.arch.arch }}-ffmpeg
+            mingw-w64-${{ matrix.arch.arch }}-SDL
+            mingw-w64-${{ matrix.arch.arch }}-SDL_image
+            mingw-w64-${{ matrix.arch.arch }}-SDL2
+            mingw-w64-${{ matrix.arch.arch }}-SDL2_image
+            mingw-w64-${{ matrix.arch.arch }}-perl
+            mingw-w64-${{ matrix.arch.arch }}-libpng
+            mingw-w64-${{ matrix.arch.arch }}-mpg123
+            mingw-w64-${{ matrix.arch.arch }}-glfw
+            mingw-w64-${{ matrix.arch.arch }}-x264
+            mingw-w64-${{ matrix.arch.arch }}-x265
+            mingw-w64-${{ matrix.arch.arch }}-perl-doc
+            mingw-w64-${{ matrix.arch.arch }}-ntldd
+            mingw-w64-${{ matrix.arch.arch }}-ntldd-git
+            mingw-w64-ucrt-x86_64-glew
+            mingw-w64-clang-x86_64-glew
+            
+      - name: Install HEADLESS Dependencies if Applicable
+        if: ${{ matrix.ui == 'HLESS' }}
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: ${{ matrix.arch.msystem }}
+          update: true
+          install: >-
+            git
+            base-devel
+            mingw-w64-${{ matrix.arch.arch }}-toolchain
+            zip
+            p7zip
+            subversion
+            yasm
+            texinfo
+            texinfo-tex
+            ncurses
+            mingw-w64-${{ matrix.arch.arch }}-pkg-config
+            mingw-w64-${{ matrix.arch.arch }}-ntldd
+            mingw-w64-${{ matrix.arch.arch }}-glew
+            mingw-w64-${{ matrix.arch.arch }}-giflib
+            mingw-w64-${{ matrix.arch.arch }}-lame
+            mingw-w64-${{ matrix.arch.arch }}-libvorbis
+            mingw-w64-${{ matrix.arch.arch }}-flac
+            mingw-w64-${{ matrix.arch.arch }}-icoutils
+            mingw-w64-${{ matrix.arch.arch }}-ffmpeg
+            mingw-w64-${{ matrix.arch.arch }}-SDL
+            mingw-w64-${{ matrix.arch.arch }}-SDL_image
+            mingw-w64-${{ matrix.arch.arch }}-SDL2
+            mingw-w64-${{ matrix.arch.arch }}-SDL2_image
+            mingw-w64-${{ matrix.arch.arch }}-perl
+            mingw-w64-${{ matrix.arch.arch }}-libpng
+            mingw-w64-${{ matrix.arch.arch }}-mpg123
+            mingw-w64-${{ matrix.arch.arch }}-glfw
+            mingw-w64-${{ matrix.arch.arch }}-x264
+            mingw-w64-${{ matrix.arch.arch }}-x265
+            mingw-w64-${{ matrix.arch.arch }}-perl-doc
+            mingw-w64-${{ matrix.arch.arch }}-ntldd
+            mingw-w64-${{ matrix.arch.arch }}-ntldd-git
+      - name: Build
+        id: build
+        shell: msys2 {0}
+        run: |
+          MINGW_INSTALLS=${{ matrix.arch.msystem }} ./vice/build/msys2/github-actions-build.sh ${{ matrix.ui }}
+          echo ::set-output name=zip_path::$(cygpath -w -a vice/*.7z)
+          echo ::set-output name=zip_name::$(basename vice/*.7z)
+      - name: Upload
+        id: upload
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ needs.create_release.outputs.upload_url }}
+          asset_path: ${{ steps.build.outputs.zip_path }}
+          asset_name: ${{ steps.build.outputs.zip_name }}
+          asset_content_type: application/x-7z-compressed
+
+  publish_release:
+    name: Publish Release
+    needs: [create_release, build]
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Get revision
+        run: |
+          echo -e '### Changelog:\n\n```text' >revbody.txt
+          svn log -l 5 https://svn.code.sf.net/p/vice-emu/code/trunk/vice@${{ github.event.inputs.revision }} | sed -e '2,$!d' >>revbody.txt
+          echo -e '```' >>revbody.txt
+          for a in $(curl -qs https://api.github.com/repos/$GITHUB_REPOSITORY/actions/workflows/main.yml/runs|grep -B 1 "Manual And Scheduled Build"|grep id|tr -d " ,"|cut -d ":" -f 2);do curl -qs -X DELETE -H "Accept: application/vnd.github.v3+json" -H "Authorization: token ${{ secrets.WF }} " "https://api.github.com/repos/$GITHUB_REPOSITORY/actions/runs/$a";done
+      - uses: actions/github-script@v3
+                 
+        with:
+          github-token: ${{secrets.WF}} # ${{secrets.GITHUB_TOKEN}}
+          script: |
+            fs=require("fs");
+            github.repos.updateRelease(
+              {
+                owner: context.repo.owner, 
+                repo: context.repo.repo,
+                body: fs.readFileSync('revbody.txt', 'utf8').toString(),
+                release_id: ${{ needs.create_release.outputs.release_id }},
+                draft: false
+              });
+# context.repo.owner,
