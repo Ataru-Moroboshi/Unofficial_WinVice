@@ -113,8 +113,8 @@ jobs:
                 continue;
               }
               
-              // Keep at least 5, no matter how old
-              if (++releaseCount <= 5)
+              // Keep at least 15, no matter how old
+              if (++releaseCount => 15)
                 continue;
               
               // We have more than 10 releases - delete those more than 30 days old
