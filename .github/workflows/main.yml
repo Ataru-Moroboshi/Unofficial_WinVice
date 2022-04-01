@@ -264,6 +264,7 @@ jobs:
             mingw-w64-${{ matrix.arch.arch }}-mpg123
             mingw-w64-${{ matrix.arch.arch }}-ntldd
             mingw-w64-${{ matrix.arch.arch }}-ntldd-git
+            mingw-w64-${{ matrix.arch.arch }}-libpcap
       
       - name: Install SDL2 Dependencies if Applicable
         if: ${{ matrix.ui == 'SDL2' }}
@@ -302,6 +303,7 @@ jobs:
             mingw-w64-${{ matrix.arch.arch }}-SDL2_image
             mingw-w64-${{ matrix.arch.arch }}-ntldd
             mingw-w64-${{ matrix.arch.arch }}-ntldd-git
+            mingw-w64-${{ matrix.arch.arch }}-libpcap
       
       - name: Install SDL Dependencies if Applicable
         if: ${{ matrix.ui == 'SDL' }}
@@ -344,6 +346,7 @@ jobs:
             mingw-w64-${{ matrix.arch.arch }}-perl-doc
             mingw-w64-${{ matrix.arch.arch }}-ntldd
             mingw-w64-${{ matrix.arch.arch }}-ntldd-git
+            mingw-w64-${{ matrix.arch.arch }}-libpcap
             mingw-w64-ucrt-x86_64-glew
             mingw-w64-clang-x86_64-glew
             
@@ -388,6 +391,7 @@ jobs:
             mingw-w64-${{ matrix.arch.arch }}-perl-doc
             mingw-w64-${{ matrix.arch.arch }}-ntldd
             mingw-w64-${{ matrix.arch.arch }}-ntldd-git
+            mingw-w64-${{ matrix.arch.arch }}-libpcap
       - name: Build
         id: build
         shell: msys2 {0}
