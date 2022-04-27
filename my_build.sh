@@ -8,7 +8,7 @@ cd "$(dirname $0)"/../..
 # https://www.floodgap.com/retrotech/xa/dists/ for a newer version.
 #
 
-# XA_VERSION=2.3.12
+# XA_VERSION=2.3.13
 XA_VERSION=$(wget --tries=1 -O - https://www.floodgap.com/retrotech/xa/dists/ 2>/dev/null | grep '"xa-[^"]*gz"' | sed -e 's,.*xa-,,' -e 's,.tar.gz.*,,' | sort -V | tail -n1)
 
 if [ ! -e /usr/local/bin/xa65.exe ]
@@ -77,11 +77,11 @@ GTK3)
     ;;
 
 SDL2)
-    ARGS="--enable-sdlui2 $ARGS"
+    ARGS="--enable-sdl2ui $ARGS"
     ;;
 
 SDL)
-    ARGS="--enable-sdlui $ARGS"
+    ARGS="--enable-sdl1ui $ARGS"
     ;;
 
 HLESS)
