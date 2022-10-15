@@ -28,7 +28,7 @@ jobs:
           )
           )
           
-      - uses: dev-drprasad/delete-older-releases@v0.2.0
+      - uses: Ataru-Moroboshi/delete-older-releases@v0.2.0
         with:
           repo: Ataru-Moroboshi/Unofficial_WinVice # defaults to current repo
           keep_latest: 10
