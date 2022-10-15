@@ -11,6 +11,14 @@ jobs:
     name: Check
     runs-on: ubuntu-latest
     steps:
+      - uses: Ataru-Moroboshi/delete-older-releases@master
+        with:
+          repo: Ataru-Moroboshi/Unofficial_WinVice # defaults to current repo
+          keep_latest: 10
+          delete_tag_pattern: beta # defaults to ""
+        env:
+          GITHUB_TOKEN: ${{ secrets.WF }}
+          
       - name: Check for updates.
         id: check
         shell: bash
@@ -27,11 +35,3 @@ jobs:
           )
           )
           )
-          
-      - uses: Ataru-Moroboshi/delete-older-releases@master
-        with:
-          repo: Ataru-Moroboshi/Unofficial_WinVice # defaults to current repo
-          keep_latest: 10
-          delete_tag_pattern: beta # defaults to ""
-        env:
-          GITHUB_TOKEN: ${{ secrets.WF }}
