@@ -13,9 +13,9 @@ jobs:
     steps:
       - uses: Ataru-Moroboshi/delete-older-releases@master
         with:
-          repo: Ataru-Moroboshi/Unofficial_WinVice/releases # defaults to current repo
+          repo: Ataru-Moroboshi/Unofficial_WinVice # defaults to current repo
           keep_latest: 10
-          delete_tag_pattern: beta # defaults to ""
+          delete_tag_pattern: release # defaults to ""
         env:
           GITHUB_TOKEN: ${{ secrets.WF }}
           
