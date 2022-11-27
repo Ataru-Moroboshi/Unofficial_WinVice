@@ -85,6 +85,9 @@ jobs:
 
       - uses: actions/github-script@v5
         with:
+            result-encoding: string
+            retries: 3
+            retry-exempt-status-codes: 400,401
           github-token: ${{secrets.GITHUB_TOKEN}}
           script: |
             // Get a list of all releases, sorted newest first
