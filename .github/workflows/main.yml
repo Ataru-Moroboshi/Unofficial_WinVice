@@ -209,7 +209,7 @@ jobs:
         arch:
         - { msystem: MINGW64, arch: x86_64 }
         - { msystem: MINGW32, arch: i686 }
-        ui: [ GTK3, SDL2 ]
+        ui: [ GTK3, SDL2, SDL ]
         
     steps:
     
