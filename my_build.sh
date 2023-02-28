@@ -41,7 +41,7 @@ ARGS="
     --enable-lame \
     --enable-midi \
     --enable-cpuhistory \
-        --enable-ffmpeg \
+        --enable-external-ffmpeg \
  	--enable-platformdox \
  	--enable-html-docs \
 	--enable-native-tools \
