@@ -28,10 +28,8 @@ ARGS="
     --disable-catweasel \
     --disable-hardsid \
     --disable-parsid \
-    --disable-ssi2001 \
     --disable-arch \
     --disable-pdf-docs \
-    --with-jpeg \
     --with-png \
     --with-gif \
     --with-vorbis \
@@ -41,16 +39,12 @@ ARGS="
     --enable-lame \
     --enable-midi \
     --enable-cpuhistory \
-        --enable-external-ffmpeg \
  	--enable-platformdox \
  	--enable-html-docs \
-	--enable-native-tools \
 	--enable-rs232 \
 	--enable-new8580filter \
-	--with-fast-sid \
+	--with-fastsid \
 	--with-resid \
-	--enable-quicktime \
-	--enable-libx264 \
 	--enable-x64 \
 	--enable-x64-image \
 	--enable-realdevice \
@@ -69,11 +63,17 @@ ARGS="
 #	--enable-libieee1284 \
 #	--enable-embedded \
 #	--enable-desktop-files \
+#	--enable-quicktime \
+#       --enable-ffmpeg \
+#	--with-jpeg \
+#	--enable-native-tools \
+#	--disable-ssi2001 \
+#	--enable-libx264 \
 #
 
 case "$1" in
 GTK3)
-    ARGS="--enable-native-gtk3ui $ARGS"
+    ARGS="--enable-gtk3ui $ARGS"
     ;;
 
 SDL2)
